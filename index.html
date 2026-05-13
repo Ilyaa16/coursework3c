@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>English Crossword Learner</title>
+  <style>
+    :root {
+      --bg: #0f172a; --surface: #1e293b; --surface-hover: #334155;
+      --primary: #3b82f6; --primary-hover: #2563eb;
+      --success: #22c55e; --error: #ef4444; --warning: #eab308; --bot: #8b5cf6;
+      --text: #f8fafc; --text-muted: #94a3b8;
+      --grid-size: 15; --cell-size: min(38px, calc((90vw - 20px) / var(--grid-size)));
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text);
+      min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 16px;
+    }
+    .screen { background: var(--surface); border-radius: 16px; padding: 24px; width: 100%; max-width: 1100px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+    .hidden { display: none !important; }
+    h1, h2 { margin-bottom: 16px; color: var(--primary); }
+    .stats-bar { display: flex; gap: 20px; background: var(--surface-hover); padding: 12px; border-radius: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .stat { display: flex; flex-direction: column; align-items: center; }
+    .stat span:first-child { font-size: 0.85rem; color: var(--text-muted); }
+    .stat span:last-child { font-size: 1.4rem; font-weight: bold; }
+    .btn { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer; transition: 0.2s; }
+    .btn:hover { background: var(--primary-hover); transform: translateY(-2px); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-secondary { background: var(--surface-hover); }
+    .game-layout { display: grid; grid-template-columns: 1fr 300px; gap: 24px; margin-top: 16px; }
+    @media (max-width: 850px) { .game-layout { grid-template-columns: 1fr; } }
+    #crossword-board {
+      display: grid; grid-template-columns: repeat(var(--grid-size), var(--cell-size));
+      grid-template-rows: repeat(var(--grid-size), var(--cell-size)); gap: 2px;
+      background: #020617; padding: 8px; border-radius: 12px; width: fit-content; margin: 0 auto;
+    }
+    .cell {
+      background: var(--surface); display: flex; align-items: center; justify-content: center;
+      font-size: calc(var(--cell-size) * 0.6); font-weight: bold; cursor: pointer;
+      position: relative; user-select: none; border-radius: 4px; transition: background 0.1s;
+    }
+    .cell:focus { outline: 3px solid var(--warning); outline-offset: -2px; z-index: 2; }
+    .cell.active { background: var(--primary); color: white; }
+    .cell.correct { background: var(--success) !important; color: white !important; border: 2px solid #16a34a; }
+    .cell.bot-filled { background: var(--bot); color: white; }
+    .cell.both-filled { background: #6d28d9; color: white; border: 2px solid #8b5cf6; }
+    .cell.wrong { background: var(--error); color: white; }
+    .cell.black { background: transparent; cursor: default; }
+    .cell .number { position: absolute; top: 2px; left: 2px; font-size: 10px; color: var(--text-muted); pointer-events: none; }
+    .clues-panel { background: var(--surface-hover); padding: 16px; border-radius: 12px; max-height: 80vh; overflow-y: auto; }
+    .clue-group { margin-bottom: 16px; }
+    .clue-group h3 { color: var(--warning); margin-bottom: 8px; }
+    .clue-item { padding: 6px 0; border-bottom: 1px solid #334155; cursor: pointer; transition: 0.2s; }
+    .clue-item:hover { color: var(--primary); }
+    .clue-item.active { background: rgba(59,130,246,0.2); padding-left: 6px; border-radius: 4px; }
+    .controls { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .results-list, .dict-list { max-height: 300px; overflow-y: auto; background: var(--surface-hover); padding: 12px; border-radius: 8px; margin: 16px 0; }
+    .result-word, .dict-word { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #334155; }
+    .result-word span:last-child, .dict-word span { color: var(--success); }
+    .fade-in { animation: fadeIn 0.4s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .search-input, select.search-input { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid #334155; border-radius: 6px; background: var(--surface-hover); color: white; }
+    .progress-container { display: flex; gap: 15px; margin-bottom: 15px; }
+    .progress-wrap { flex: 1; background: #020617; border-radius: 6px; overflow: hidden; height: 8px; position: relative; }
+    .progress-bar { height: 100%; transition: width 0.3s ease; }
+    .progress-player { background: var(--success); }
+    .progress-bot { background: var(--bot); }
+    .progress-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; display: flex; justify-content: space-between; }
+    #loading { text-align: center; padding: 40px; color: var(--text-muted); }
+    #result-message { font-size: 1.5rem; margin: 16px 0; text-align: center; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <section id="main-screen" class="screen fade-in">
+      <h1>📚 English Crossword</h1>
+      <p style="color: var(--text-muted); margin-bottom: 20px;">Изучай слова уровня B1-B2 в игровом формате. Прогресс и монеты сохраняются автоматически.</p>
+      
+      <div class="mode-select" style="margin: 16px 0; display: flex; gap: 10px; flex-wrap: wrap;">
+        <button class="btn" id="btn-mode-solo" style="flex:1">👤 Соло</button>
+        <button class="btn btn-secondary" id="btn-mode-vsbot" style="flex:1">🤖 Против бота</button>
+      </div>
+      <div id="difficulty-wrap" class="hidden" style="margin: 10px 0;">
+        <label style="color:var(--text-muted); font-size:0.9rem;">Сложность бота:
+          <select id="bot-difficulty" class="search-input" style="width:auto; margin-left:8px; margin-bottom:0;">
+            <option value="easy">Легко</option>
+            <option value="medium" selected>Средне</option>
+            <option value="hard">Сложно</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="stats-bar">
+        <div class="stat"><span>Игр сыграно</span><span id="stat-games">0</span></div>
+        <div class="stat"><span>Слов изучено</span><span id="stat-learned">0</span></div>
+        <div class="stat"><span>Точность</span><span id="stat-accuracy">0%</span></div>
+      </div>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">
+        <button class="btn" id="btn-start">🎮 Начать игру</button>
+        <button class="btn btn-secondary" id="btn-view-dictionary">📖 Словарь</button>
+        <button class="btn btn-secondary" id="btn-reset-stats">🔄 Сброс</button>
+      </div>
+    </section>
+
+    <section id="game-screen" class="screen hidden">
+      <div class="stats-bar">
+        <div class="stat"><span>⏱ Время</span><span id="timer">00:00</span></div>
+        <div class="stat"><span>⭐ Очки</span><span id="score">0</span></div>
+        <div class="stat"><span>💰 Монеты</span><span id="coin-balance">0</span></div>
+      </div>
+      
+      <div class="progress-container">
+        <div style="flex:1"><div class="progress-wrap"><div id="bar-player" class="progress-bar progress-player" style="width:0%"></div></div><div class="progress-label"><span>👤 Вы</span><span id="pct-player">0%</span></div></div>
+        <div id="bot-progress-wrap" style="flex:1; display:none;"><div class="progress-wrap"><div id="bar-bot" class="progress-bar progress-bot" style="width:0%"></div></div><div class="progress-label"><span>🤖 Бот</span><span id="pct-bot">0%</span></div></div>
+      </div>
+
+      <div class="game-layout">
+        <div id="crossword-board"></div>
+        <div class="clues-panel">
+          <div class="clue-group" id="across-clues"></div>
+          <div class="clue-group" id="down-clues"></div>
+        </div>
+      </div>
+      <div class="controls">
+        <button class="btn btn-secondary" id="btn-check">✅ Проверить (+2💰/новая буква)</button>
+        <button class="btn btn-secondary" id="btn-hint-letter">🔤 Буква (10💰)</button>
+        <button class="btn btn-secondary" id="btn-hint-word">📝 Слово (25💰)</button>
+        <button class="btn btn-secondary" id="btn-surrender">🏳 Сдаться</button>
+      </div>
+    </section>
+
+    <section id="results-screen" class="screen hidden">
+      <h2>🏆 Результаты</h2>
+      <div id="result-message"></div>
+      <div class="stats-bar">
+        <div class="stat"><span>Финальный счёт</span><span id="final-score">0</span></div>
+        <div class="stat"><span>Отгадано слов</span><span id="final-correct">0</span></div>
+        <div class="stat"><span>Время</span><span id="final-time">00:00</span></div>
+        <div class="stat"><span>💰 Баланс</span><span id="final-coins">0</span></div>
+      </div>
+      <h3>Слова из кроссворда:</h3>
+      <div id="new-words-list" class="results-list"></div>
+      <button class="btn" id="btn-play-again">🔁 Играть снова</button>
+      <button class="btn btn-secondary" id="btn-to-menu">🏠 В меню</button>
+    </section>
+
+    <section id="dictionary-screen" class="screen hidden">
+      <h2>📖 Полный словарь</h2>
+      <input type="text" id="dict-search" class="search-input" placeholder="🔍 Поиск по слову или переводу...">
+      <div id="dict-content" class="dict-list" style="max-height: 60vh;"></div>
+      <button class="btn btn-secondary" id="btn-back-dict">← Назад</button>
+    </section>
+    
+    <div id="loading" class="screen hidden">⏳ Загрузка словаря...</div>
+  </div>
+
+<script>
+/** 📦 МОДУЛЬ 1: LocalStorage + Монеты */
+const Storage = {
+  get(key, fallback = null) { try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch { return fallback; } },
+  set(key, value) { localStorage.setItem(key, JSON.stringify(value)); },
+  getLearned() { return this.get('cross_learned', []); },
+  addLearned(words) { const c = this.getLearned(); this.set('cross_learned', [...new Set([...c, ...words])]); },
+  getStats() { return this.get('cross_stats', { games: 0, correct: 0, hints: 0 }); },
+  updateStats(hintsUsed) { const s = this.getStats(); s.games++; s.hints += hintsUsed; this.set('cross_stats', s); return s; },
+  reset() { localStorage.removeItem('cross_learned'); localStorage.removeItem('cross_stats'); localStorage.removeItem('cross_coins'); },
+  getCoins() { return this.get('cross_coins', 50); },
+  setCoins(val) { this.set('cross_coins', Math.max(0, Math.floor(val))); },
+  addCoins(amount) { this.setCoins(this.getCoins() + amount); }
+};
+
+/** 📖 МОДУЛЬ 2: Словарь */
+const Dictionary = {
+   data: [],
+  loaded: false,
+  async load() {
+    if (this.loaded) return this.data;
+    try {
+      const res = await fetch('./dictionary.json');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      this.data = (await res.json()).map(w => ({ ...w, word: w.word.toUpperCase() }));
+      this.loaded = true;
+      console.log(`✅ Загружено ${this.data.length} слов из dictionary.json`);
+      return this.data;
+    } catch (err) {
+      console.error('❌ Ошибка загрузки:', err);
+      return [];
+    }
+  },
+  getRandomWords(count = 35, learned = []) {
+    const pool = this.data.filter(w => !learned.includes(w.word));
+    const source = pool.length >= count ? pool : this.data;
+    return [...source].sort(() => 0.5 - Math.random()).slice(0, count);
+  }
+};
+
+/** 🧩 МОДУЛЬ 3: Улучшенный генератор (гарантирует 6+ слов) */
+class CrosswordGenerator {
+  constructor(size = 15) { this.size = size; this.reset(); }
+  reset() { this.grid = Array(this.size).fill(null).map(() => Array(this.size).fill(null)); this.placed = []; }
+  
+  generate(words, minWords = 6) {
+    if (words.length < minWords) return null;
+    
+    const candidates = [...words].sort((a, b) => b.word.length - a.word.length);
+    let bestResult = null;
+    let bestCount = 0;
+
+    for (let attempt = 0; attempt < 25; attempt++) {
+      this.reset();
+      const pool = [...candidates].sort(() => 0.5 - Math.random());
+      
+      const f = pool[0];
+      const r0 = Math.floor(this.size/2);
+      const c0 = Math.floor(this.size/2) - Math.floor(f.word.length/2);
+      if (!this._canPlace(f.word, r0, c0, 'across')) continue;
+      this._place(f.word, r0, c0, 'across', 1);
+
+      for (let i = 1; i < pool.length; i++) {
+        const w = pool[i].word;
+        const placement = this._findBestPlacement(w);
+        if (placement) this._place(w, placement.r, placement.c, placement.d, this.placed.length + 1);
+      }
+
+      if (this.placed.length > bestCount) {
+        bestCount = this.placed.length;
+        bestResult = this._exportResult(pool);
+        if (bestCount >= 9) break;
+      }
+    }
+
+    if (bestCount < minWords) {
+      this._addParallelWords(candidates.slice(bestCount + 5), minWords);
+      bestResult = this._exportResult(candidates);
+      console.log(`⚠️ Применён fallback. Итог: ${this.placed.length} слов`);
+    }
+
+    console.log(`✅ Кроссворд сгенерирован. Слов: ${this.placed.length}`);
+    return bestResult;
+  }
+
+  _exportResult(pool) {
+    return {
+      grid: this.grid.map(r => [...r]),
+      clues: this.placed.map(p => ({word: p.word, dir: p.dir, num: p.clueIndex, row: p.row, col: p.col})),
+      wordList: pool.filter(w => this.placed.some(p => p.word === w.word))
+    };
+  }
+
+  _place(w, r, c, d, num) {
+    for (let i=0; i<w.length; i++) this.grid[r+(d==='down'?i:0)][c+(d==='across'?i:0)] = w[i];
+    this.placed.push({word:w, row:r, col:c, dir:d, clueIndex:num});
+  }
+
+  _canPlace(w, r, c, d) {
+    const l = w.length;
+    if (d==='across') {
+      if (c<0 || c+l>this.size) return false;
+      for(let i=0;i<l;i++){
+        const cell = this.grid[r][c+i];
+        if (cell && cell !== w[i]) return false;
+        if (!cell && ((r>0 && this.grid[r-1][c+i]) || (r<this.size-1 && this.grid[r+1][c+i]))) return false;
+      }
+      return !(c>0 && this.grid[r][c-1]) && !(c+l<this.size && this.grid[r][c+l]);
+    } else {
+      if (r<0 || r+l>this.size) return false;
+      for(let i=0;i<l;i++){
+        const cell = this.grid[r+i][c];
+        if (cell && cell !== w[i]) return false;
+        if (!cell && ((c>0 && this.grid[r+i][c-1]) || (c<this.size-1 && this.grid[r+i][c+1]))) return false;
+      }
+      return !(r>0 && this.grid[r-1][c]) && !(r+l<this.size && this.grid[r+l][c]);
+    }
+  }
+
+  _findBestPlacement(w) {
+    let best = null, bestScore = -1;
+    for (let r=0; r<this.size; r++) {
+      for (let c=0; c<this.size; c++) {
+        if (!this.grid[r][c]) continue;
+        for (const d of ['across', 'down']) {
+          let matchIdx = -1;
+          for (let i=0; i<w.length; i++) {
+            const tr = r + (d==='down'?i:0);
+            const tc = c + (d==='across'?i:0);
+            if (tr===r && tc===c && this.grid[r][c] === w[i]) { matchIdx = i; break; }
+          }
+          if (matchIdx === -1) continue;
+
+          const startR = r - (d==='down'?matchIdx:0);
+          const startC = c - (d==='across'?matchIdx:0);
+          if (this._canPlace(w, startR, startC, d)) {
+            let score = 1;
+            for(let i=0;i<w.length;i++){
+              const tr = startR + (d==='down'?i:0);
+              const tc = startC + (d==='across'?i:0);
+              if(!this.grid[tr][tc]) score += 0.1;
+            }
+            if (score > bestScore) { bestScore = score; best = {r:startR, c:startC, d}; }
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  _addParallelWords(pool, target) {
+    if (this.placed.length >= target) return;
+    for (const w of pool) {
+      if (this.placed.length >= target) break;
+      for (let r=2; r<this.size-2; r++) {
+        const rowEmpty = this.grid[r].slice(1,-1).every(c => c === null);
+        if (rowEmpty && w.length <= this.size - 4) {
+          const c = Math.floor((this.size - w.length)/2);
+          if (this._canPlace(w.word, r, c, 'across')) { this._place(w.word, r, c, 'across', this.placed.length + 1); break; }
+        }
+      }
+      if (this.placed.length < target) {
+        for (let c=2; c<this.size-2; c++) {
+          let colEmpty = true;
+          for(let r=2;r<this.size-2;r++) if(this.grid[r][c]) { colEmpty=false; break; }
+          if (colEmpty && w.length <= this.size - 4) {
+            const r = Math.floor((this.size - w.length)/2);
+            if (this._canPlace(w.word, r, c, 'down')) { this._place(w.word, r, c, 'down', this.placed.length + 1); break; }
+          }
+        }
+      }
+    }
+  }
+}
+
+/** 🎮 МОДУЛЬ 4: Приложение с валютой */
+class App {
+  constructor() {
+    this.state = {
+      mode: 'solo', grid:null, solution:null, clues:null, activeWord:null,
+      activeCell:{r:0,c:0}, score:0, startTime:null, timerInterval:null,
+      hintsUsed:0, currentWords:[], correctCells:new Set(),
+      bot: { active:false, filled:new Set(), interval:null, speed:2000 }
+    };
+    this.generator = new CrosswordGenerator(15);
+    this._bind(); this._updateStats();
+  }
+  _bind() {
+    document.getElementById('btn-mode-solo').onclick = () => { this.state.mode='solo'; document.getElementById('btn-mode-solo').className='btn'; document.getElementById('btn-mode-vsbot').className='btn btn-secondary'; document.getElementById('difficulty-wrap').classList.add('hidden'); };
+    document.getElementById('btn-mode-vsbot').onclick = () => { this.state.mode='vsbot'; document.getElementById('btn-mode-vsbot').className='btn'; document.getElementById('btn-mode-solo').className='btn btn-secondary'; document.getElementById('difficulty-wrap').classList.remove('hidden'); };
+    document.getElementById('btn-start').onclick = () => this.start();
+    document.getElementById('btn-reset-stats').onclick = () => { Storage.reset(); location.reload(); };
+    document.getElementById('btn-view-dictionary').onclick = () => this.openDictionary();
+    document.getElementById('btn-back-dict').onclick = () => this.show('main');
+    document.getElementById('btn-check').onclick = () => this.check();
+    document.getElementById('btn-hint-letter').onclick = () => this.hint('letter');
+    document.getElementById('btn-hint-word').onclick = () => this.hint('word');
+    document.getElementById('btn-surrender').onclick = () => this.end(false, 'surrender');
+    document.getElementById('btn-play-again').onclick = () => this.start();
+    document.getElementById('btn-to-menu').onclick = () => this.show('main');
+    document.getElementById('dict-search').oninput = (e) => this.filterDictionary(e.target.value);
+    document.addEventListener('keydown', e => this.key(e));
+    document.addEventListener('click', e => this.click(e));
+  }
+  show(name) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+    document.getElementById(`${name}-screen`).classList.remove('hidden');
+    if (name === 'main') this._updateStats();
+  }
+  _updateStats() {
+    const s = Storage.getStats();
+    document.getElementById('stat-games').textContent = s.games;
+    document.getElementById('stat-learned').textContent = Storage.getLearned().length;
+    const acc = s.games > 0 ? Math.round((s.correct / (s.games * 7)) * 100) : 0;
+    document.getElementById('stat-accuracy').textContent = `${acc}%`;
+  }
+  async start() {
+    await Dictionary.load();
+    const candidates = Dictionary.getRandomWords(35, Storage.getLearned());
+    if (candidates.length < 6) return alert('⚠️ Недостаточно слов в словаре.');
+    
+    const res = this.generator.generate(candidates, 6);
+    if (!res || res.clues.length < 4) return alert('❌ Не удалось сгенерировать кроссворд. Попробуйте снова.');
+
+    this.state.currentWords = res.wordList;
+    this.state.clues = res.clues;
+    this.state.solution = res.grid.map(r => r.map(c => c || ''));
+    this.state.grid = Array(15).fill(null).map(() => Array(15).fill(''));
+    this.state.correctCells.clear();
+    this.state.activeWord = res.clues[0];
+    this.state.score = 0; 
+    this.state.hintsUsed = 0; 
+    this.state.startTime = Date.now();
+    this.state.bot.active = false; this.state.bot.filled.clear(); clearInterval(this.state.bot.interval);
+
+    if (this.state.mode === 'vsbot') {
+      document.getElementById('bot-progress-wrap').style.display = 'block';
+      this.state.bot.active = true;
+      const diff = document.getElementById('bot-difficulty').value;
+      this.state.bot.speed = diff === 'easy' ? 3500 : diff === 'hard' ? 900 : 2000;
+      this._startBot();
+    } else {
+      document.getElementById('bot-progress-wrap').style.display = 'none';
+    }
+
+    this._renderBoard(); this._renderClues(); this._updateUI(); this._startTimer();
+    this.show('game');
+    setTimeout(() => this._focusCell(this.state.activeCell.r, this.state.activeCell.c), 100);
+  }
+  _startBot() {
+    const totalLetters = this.state.solution.flat().filter(Boolean).length;
+    this.state.bot.interval = setInterval(() => {
+      if (!this.state.bot.active) return;
+      const empty = [];
+      for(let r=0; r<15; r++) for(let c=0; c<15; c++) {
+        if(this.state.solution[r][c] && !this.state.bot.filled.has(`${r},${c}`) && !this.state.correctCells.has(`${r},${c}`)) empty.push({r,c});
+      }
+      if (empty.length === 0) { this.end(false, 'bot'); return; }
+      const {r,c} = empty[Math.floor(Math.random() * empty.length)];
+      this.state.bot.filled.add(`${r},${c}`);
+      this._renderBoard(); this._updateProgress();
+      if (this.state.bot.filled.size >= totalLetters) this.end(false, 'bot');
+    }, this.state.bot.speed);
+  }
+  _updateProgress() {
+    const total = this.state.solution.flat().filter(Boolean).length;
+    const pPct = Math.min(100, Math.round((this.state.correctCells.size / total) * 100));
+    const bPct = Math.min(100, Math.round((this.state.bot.filled.size / total) * 100));
+    document.getElementById('bar-player').style.width = `${pPct}%`;
+    document.getElementById('pct-player').textContent = `${pPct}%`;
+    if(this.state.mode==='vsbot'){
+      document.getElementById('bar-bot').style.width = `${bPct}%`;
+      document.getElementById('pct-bot').textContent = `${bPct}%`;
+    }
+  }
+  _renderBoard() {
+    const b = document.getElementById('crossword-board'); b.innerHTML = '';
+    for (let r=0; r<15; r++) for (let c=0; c<15; c++) {
+      const el = document.createElement('div'); el.className = 'cell'; el.dataset.r = r; el.dataset.c = c;
+      if (!this.state.solution[r][c]) { el.classList.add('black'); }
+      else {
+        el.setAttribute('tabindex', '0');
+        const isP = this.state.correctCells.has(`${r},${c}`);
+        const isB = this.state.mode==='vsbot' && this.state.bot.filled.has(`${r},${c}`);
+        el.textContent = this.state.grid[r][c] || (isB ? this.state.solution[r][c] : '');
+        if (isP && isB) el.classList.add('both-filled');
+        else if (isP) el.classList.add('correct');
+        else if (isB) el.classList.add('bot-filled');
+        const clue = this.state.clues.find(cl => cl.row===r && cl.col===c);
+        if (clue) el.innerHTML += `<span class="number">${clue.num}</span>`;
+      }
+      b.appendChild(el);
+    }
+    this._updateProgress();
+  }
+  _renderClues() {
+    const [a,d] = [document.getElementById('across-clues'), document.getElementById('down-clues')];
+    a.innerHTML = '<h3>По горизонтали</h3>'; d.innerHTML = '<h3>По вертикали</h3>';
+    this.state.clues.forEach(cl => {
+      const w = this.state.currentWords.find(x => x.word === cl.word);
+      const div = document.createElement('div'); div.className = 'clue-item'; div.dataset.word = cl.word;
+      div.innerHTML = `<b>${cl.num}.</b> ${w ? w.definition : cl.word}`;
+      div.onclick = () => this._select(cl);
+      (cl.dir === 'across' ? a : d).appendChild(div);
+    });
+  }
+  _select(clue) {
+    this.state.activeWord = clue;
+    this._highlight();
+    this._focusCell(clue.row, clue.col);
+    document.querySelectorAll('.clue-item').forEach(e => e.classList.remove('active'));
+    document.querySelector(`.clue-item[data-word="${clue.word}"]`)?.classList.add('active');
+  }
+  _highlight() {
+    document.querySelectorAll('.cell').forEach(e => e.classList.remove('active'));
+    const {row, col, dir, word} = this.state.activeWord;
+    for (let i=0; i<word.length; i++) {
+      const r = row + (dir==='down'?i:0), c = col + (dir==='across'?i:0);
+      const el = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+      const isFilled = this.state.correctCells.has(`${r},${c}`) || (this.state.mode==='vsbot' && this.state.bot.filled.has(`${r},${c}`));
+      if(el && !isFilled) el.classList.add('active');
+    }
+  }
+  click(e) {
+    const cell = e.target.closest('.cell'); if (!cell || cell.classList.contains('black')) return;
+    const r = +cell.dataset.r, c = +cell.dataset.c;
+    this.state.activeCell = {r, c};
+    this._focusCell(r, c);
+    const inActive = (this.state.activeWord.dir==='across' && this.state.activeWord.row===r) || (this.state.activeWord.dir==='down' && this.state.activeWord.col===c);
+    if (!inActive) {
+      const cl = this.state.clues.find(x => {
+        if (x.dir==='across' && x.row===r) return c >= x.col && c < x.col + x.word.length;
+        if (x.dir==='down' && x.col===c) return r >= x.row && r < x.row + x.word.length;
+        return false;
+      }); if (cl) this._select(cl);
+    } else this._highlight();
+  }
+  _focusCell(r, c) {
+    this.state.activeCell = {r, c};
+    const el = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+    if (el && !el.classList.contains('black')) el.focus();
+    this._highlight();
+  }
+  key(e) {
+    if (document.activeElement?.closest('.screen')?.id !== 'game-screen') return;
+    if (!document.activeElement.classList.contains('cell')) return;
+    const {r, c} = this.state.activeCell;
+    const isFilled = this.state.correctCells.has(`${r},${c}`) || (this.state.mode==='vsbot' && this.state.bot.filled.has(`${r},${c}`));
+    if(isFilled) { this._move(1); return; }
+    
+    if (/^[a-zA-Z]$/.test(e.key)) {
+      e.preventDefault(); this.state.grid[r][c] = e.key.toUpperCase(); this._renderBoard(); this._focusCell(r, c); this._move(1);
+    } else if (e.key === 'Backspace') {
+      e.preventDefault(); this.state.grid[r][c] = ''; this._renderBoard(); this._focusCell(r, c); this._move(-1);
+    } else if (['ArrowRight','ArrowLeft','ArrowUp','ArrowDown'].includes(e.key)) {
+      e.preventDefault();
+      this._moveCursor(e.key==='ArrowDown'?1:e.key==='ArrowUp'?-1:0, e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0);
+    }
+  }
+  _move(step) { const {dir} = this.state.activeWord; this._moveCursor(dir==='down'?step:0, dir==='across'?step:0); }
+  _moveCursor(dr, dc) {
+    let nr = this.state.activeCell.r + dr, nc = this.state.activeCell.c + dc;
+    while (nr>=0 && nr<15 && nc>=0 && nc<15) {
+      const isFilled = this.state.correctCells.has(`${nr},${nc}`) || (this.state.mode==='vsbot' && this.state.bot.filled.has(`${nr},${nc}`));
+      if (this.state.solution[nr][nc] && !isFilled) { this._focusCell(nr, nc); return; }
+      nr+=dr; nc+=dc;
+    }
+  }
+  hint(type) {
+    const cost = type === 'letter' ? 10 : 25;
+    const coins = Storage.getCoins();
+    if (coins < cost) return alert(`💸 Недостаточно монет! Нужно: ${cost}💰, У вас: ${coins}💰`);
+    
+    Storage.addCoins(-cost);
+    this.state.hintsUsed++;
+    this.state.score = Math.max(0, this.state.score - (cost / 2));
+
+    const {r,c} = this.state.activeCell;
+    const cl = this.state.clues.find(x => {
+      if (x.dir==='across' && x.row===r) return c >= x.col && c < x.col + x.word.length;
+      if (x.dir==='down' && x.col===c) return r >= x.row && r < x.row + x.word.length;
+      return false;
+    }) || this.state.activeWord;
+
+    if (type === 'letter') { 
+      this.state.grid[r][c] = this.state.solution[r][c]; 
+      this.state.correctCells.add(`${r},${c}`); 
+    } else { 
+      for(let i=0; i<cl.word.length; i++) { 
+        const rr = cl.row + (cl.dir==='down'?i:0), cc = cl.col + (cl.dir==='across'?i:0); 
+        this.state.grid[rr][cc] = this.state.solution[rr][cc]; 
+        this.state.correctCells.add(`${rr},${cc}`); 
+      } 
+    }
+    this._renderBoard(); this._focusCell(this.state.activeCell.r, this.state.activeCell.c); this._updateUI();
+    this._checkWin('player');
+  }
+  // ✅ ИСПРАВЛЕНО: очки и монеты начисляются ТОЛЬКО за впервые угаданные буквы
+  check() {
+    let newCorrect = 0;
+    for(let r=0; r<15; r++) for(let c=0; c<15; c++) {
+      const key = `${r},${c}`;
+      if(this.state.solution[r][c] && this.state.grid[r][c] === this.state.solution[r][c] && !this.state.correctCells.has(key)) {
+        this.state.correctCells.add(key);
+        newCorrect++;
+      }
+    }
+    // Награждаем только новые правильные буквы
+    if (newCorrect > 0) {
+      this.state.score += newCorrect * 2;
+      Storage.addCoins(newCorrect * 2);
+    }
+    this._renderBoard(); this._focusCell(this.state.activeCell.r, this.state.activeCell.c); this._updateUI();
+    this._checkWin('player');
+  }
+  _checkWin(winner) {
+    const total = this.state.solution.flat().filter(Boolean).length;
+    if (winner === 'player' && this.state.correctCells.size >= total) this.end(true, 'player');
+  }
+  _startTimer() {
+    clearInterval(this.state.timerInterval);
+    this.state.timerInterval = setInterval(() => {
+      const e = Math.floor((Date.now()-this.state.startTime)/1000);
+      document.getElementById('timer').textContent = `${String(Math.floor(e/60)).padStart(2,'0')}:${String(e%60).padStart(2,'0')}`;
+    }, 1000);
+  }
+  end(won, winner='player') {
+    clearInterval(this.state.timerInterval); clearInterval(this.state.bot.interval); this.state.bot.active=false;
+    if (winner === 'player') Storage.addCoins(50);
+    
+    const time = document.getElementById('timer').textContent;
+    const correctWords = this.state.clues.filter(cl => {
+      for(let i=0; i<cl.word.length; i++) {
+        const rr = cl.row + (cl.dir==='down'?i:0), cc = cl.col + (cl.dir==='across'?i:0);
+        if(this.state.grid[rr][cc] !== this.state.solution[rr][cc]) return false;
+      } return true;
+    }).length;
+    Storage.addLearned(this.state.currentWords.map(w=>w.word));
+    const st = Storage.updateStats(this.state.hintsUsed);
+    st.correct += correctWords; Storage.set('cross_stats', st);
+    
+    document.getElementById('result-message').textContent = this.state.mode==='vsbot' 
+      ? (winner==='player' ? '🏆 Вы победили бота!' : winner==='bot' ? '🤖 Бот оказался быстрее!' : '🏳 Игра прервана')
+      : (won ? '🎉 Отличная работа!' : '📝 Продолжайте учиться!');
+      
+    document.getElementById('final-score').textContent = this.state.score + (winner==='player' && this.state.mode==='vsbot' ? 50 : 0);
+    document.getElementById('final-correct').textContent = `${correctWords}/${this.state.clues.length}`;
+    document.getElementById('final-time').textContent = time;
+    document.getElementById('final-coins').textContent = Storage.getCoins();
+    document.getElementById('new-words-list').innerHTML = this.state.currentWords.map(w => `<div class="result-word"><span>${w.word} — ${w.translation}</span><span>${w.definition}</span></div>`).join('');
+    this.show('results');
+  }
+  _updateUI() {
+    document.getElementById('score').textContent = this.state.score;
+    document.getElementById('coin-balance').textContent = Storage.getCoins();
+  }
+  async openDictionary() {
+    await Dictionary.load(); this.show('dictionary'); this.filterDictionary('');
+  }
+  filterDictionary(q) {
+    q = q.toLowerCase();
+    const list = Dictionary.data.filter(w => w.word.toLowerCase().includes(q) || (w.translation||'').toLowerCase().includes(q));
+    document.getElementById('dict-content').innerHTML = list.map(w => `<div class="dict-word"><span><b>${w.word}</b> — ${w.translation||''}</span><span style="color:var(--text-muted);font-size:0.9em">${w.definition}</span></div>`).join('') || '<p style="text-align:center;color:var(--text-muted)">Ничего не найдено</p>';
+  }
+}
+document.addEventListener('DOMContentLoaded', async () => { await Dictionary.load(); window.app = new App(); });
+</script>
+</body>
+</html>
