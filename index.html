@@ -177,7 +177,7 @@ const Dictionary = {
   async load() {
     if (this.loaded) return this.data;
     try {
-      const res = await fetch('./dictionary.json');
+      const res = await fetch('dictionary.json');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       this.data = (await res.json()).map(w => ({ ...w, word: w.word.toUpperCase() }));
       this.loaded = true;
