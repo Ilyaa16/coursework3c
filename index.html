@@ -156,7 +156,7 @@
   </div>
 
 <script>
-/** 📦 МОДУЛЬ 1: LocalStorage + Монеты */
+/**  LocalStorage + Монеты */
 const Storage = {
   get(key, fallback = null) { try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch { return fallback; } },
   set(key, value) { localStorage.setItem(key, JSON.stringify(value)); },
@@ -170,7 +170,7 @@ const Storage = {
   addCoins(amount) { this.setCoins(this.getCoins() + amount); }
 };
 
-/** 📖 МОДУЛЬ 2: Словарь */
+/**  Словарь */
 const Dictionary = {
    data: [],
   loaded: false,
@@ -195,7 +195,7 @@ const Dictionary = {
   }
 };
 
-/** 🧩 МОДУЛЬ 3: Улучшенный генератор (гарантирует 6+ слов) */
+/** Генератор  */
 class CrosswordGenerator {
   constructor(size = 15) { this.size = size; this.reset(); }
   reset() { this.grid = Array(this.size).fill(null).map(() => Array(this.size).fill(null)); this.placed = []; }
@@ -330,7 +330,7 @@ class CrosswordGenerator {
   }
 }
 
-/** 🎮 МОДУЛЬ 4: Приложение с валютой */
+/**  Приложение с валютой */
 class App {
   constructor() {
     this.state = {
@@ -552,8 +552,7 @@ class App {
     this._renderBoard(); this._focusCell(this.state.activeCell.r, this.state.activeCell.c); this._updateUI();
     this._checkWin('player');
   }
-  // ✅ ИСПРАВЛЕНО: очки и монеты начисляются ТОЛЬКО за впервые угаданные буквы
-  check() {
+  
     let newCorrect = 0;
     for(let r=0; r<15; r++) for(let c=0; c<15; c++) {
       const key = `${r},${c}`;
