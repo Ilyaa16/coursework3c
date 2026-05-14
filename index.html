@@ -523,6 +523,7 @@ class App {
       nr+=dr; nc+=dc;
     }
   }
+    // ✅ Метод hint() — только подсказки
   hint(type) {
     const cost = type === 'letter' ? 10 : 25;
     const coins = Storage.getCoins();
@@ -551,9 +552,11 @@ class App {
     }
     this._renderBoard(); this._focusCell(this.state.activeCell.r, this.state.activeCell.c); this._updateUI();
     this._checkWin('player');
-  }
-  
-    let newCorrect = 0;
+  }  // ← hint() заканчивается здесь
+
+  // ✅ Метод check() — проверка и начисление наград
+  check() {
+    let newCorrect = 0;  // ← переменная ВНУТРИ метода
     for(let r=0; r<15; r++) for(let c=0; c<15; c++) {
       const key = `${r},${c}`;
       if(this.state.solution[r][c] && this.state.grid[r][c] === this.state.solution[r][c] && !this.state.correctCells.has(key)) {
@@ -561,14 +564,13 @@ class App {
         newCorrect++;
       }
     }
-    // Награждаем только новые правильные буквы
     if (newCorrect > 0) {
       this.state.score += newCorrect * 2;
       Storage.addCoins(newCorrect * 2);
     }
     this._renderBoard(); this._focusCell(this.state.activeCell.r, this.state.activeCell.c); this._updateUI();
     this._checkWin('player');
-  }
+  }  // ← check() заканчивается здесь
   _checkWin(winner) {
     const total = this.state.solution.flat().filter(Boolean).length;
     if (winner === 'player' && this.state.correctCells.size >= total) this.end(true, 'player');
